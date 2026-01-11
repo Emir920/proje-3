@@ -176,3 +176,4 @@ if __name__ == "__main__":
     giris = Giris()
     giris.show()
     sys.exit(app.exec())
+    
