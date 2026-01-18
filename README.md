@@ -9,3 +9,5 @@ burası ana ekran / kullanıcı ve şifreyi girerek giriş yapabilir kayıt ola 
 <img width="278" height="354" alt="image" src="https://github.com/user-attachments/assets/4ec18aed-25a0-47b4-9717-ebd069f9445c" />
 
 burası ana program / yeni göreve yeni şeyler yazıp görev ekleyebiliriz göreve basıp seçili görevi sile basarsak seçtiğimiz görevi sileriz
+
+görev.txt ve kullanıcılar.txt ilk çalıştırmada gelir
