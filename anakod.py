@@ -111,7 +111,7 @@ class Giris(QWidget):
             QMessageBox.warning(self, "Hata", "Giriş başarısız")
 
 
-# ---------------- ANA EKRAN ----------------
+# ---------------- ANA EKRAN ------------------
 class AnaEkran(QWidget):
     def __init__(self, kullanici):
         super().__init__()
