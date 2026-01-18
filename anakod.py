@@ -1,42 +1,41 @@
 import sys
-import sqlite3
-import hashlib
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QListWidget, QMessageBox
 )
 
-# ---------------- VERİTABANI ----------------
-veritabani_yolu = "veritabani.db"
-baglanti = sqlite3.connect(veritabani_yolu)
-imlec = baglanti.cursor()
+KULLANICI_DOSYA = "kullanicilar.txt"
+GOREV_DOSYA = "gorevler.txt"
 
-# Kullanıcılar tablosu
-imlec.execute("""
-CREATE TABLE IF NOT EXISTS kullanicilar (
-    kullanici_adi TEXT PRIMARY KEY,
-    sifre TEXT
-)
-""")
 
-# Yapılacaklar tablosu
-imlec.execute("""
-CREATE TABLE IF NOT EXISTS yapilacaklar (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kullanici_adi TEXT,
-    gorev TEXT
-)
-""")
+def kullanici_var_mi(kullanici):
+    try:
+        with open(KULLANICI_DOSYA, "r", encoding="utf-8") as f:
+            for satir in f:
+                if satir.strip().split("|")[0] == kullanici:
+                    return True
+    except FileNotFoundError:
+        pass
+    return False
 
-def sifre_hashle(sifre):
-    return hashlib.sha256(sifre.encode()).hexdigest()
+
+def giris_dogrula(kullanici, sifre):
+    try:
+        with open(KULLANICI_DOSYA, "r", encoding="utf-8") as f:
+            for satir in f:
+                k, s = satir.strip().split("|")
+                if k == kullanici and s == sifre:
+                    return True
+    except FileNotFoundError:
+        pass
+    return False
+
 
 # ---------------- KAYIT OL ----------------
 class KayitOl(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Kayıt Ol")
-        self.setGeometry(300, 300, 300, 200)
 
         self.kullanici = QLineEdit()
         self.kullanici.setPlaceholderText("Kullanıcı Adı")
@@ -55,23 +54,29 @@ class KayitOl(QWidget):
         self.setLayout(layout)
 
     def kayit(self):
-        try:
-            imlec.execute(
-                "INSERT INTO kullanicilar VALUES (?, ?)",
-                (self.kullanici.text(), sifre_hashle(self.sifre.text()))
-            )
-            baglanti.commit()
-            QMessageBox.information(self, "Başarılı", "Kayıt oluşturuldu")
-            self.close()
-        except sqlite3.IntegrityError:
-            QMessageBox.warning(self, "Hata", "Kullanıcı adı zaten var")
+        k = self.kullanici.text().strip()
+        s = self.sifre.text().strip()
+
+        if not k or not s:
+            QMessageBox.warning(self, "Hata", "Boş alan bırakma")
+            return
+
+        if kullanici_var_mi(k):
+            QMessageBox.warning(self, "Hata", "Kullanıcı zaten var")
+            return
+
+        with open(KULLANICI_DOSYA, "a", encoding="utf-8") as f:
+            f.write(f"{k}|{s}\n")
+
+        QMessageBox.information(self, "Başarılı", "Kayıt oluşturuldu")
+        self.close()
+
 
 # ---------------- GİRİŞ ----------------
 class Giris(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Giriş Yap")
-        self.setGeometry(300, 300, 300, 220)
 
         self.kullanici = QLineEdit()
         self.kullanici.setPlaceholderText("Kullanıcı Adı")
@@ -98,81 +103,82 @@ class Giris(QWidget):
         self.kayit.show()
 
     def giris(self):
-        imlec.execute(
-            "SELECT * FROM kullanicilar WHERE kullanici_adi=? AND sifre=?",
-            (self.kullanici.text(), sifre_hashle(self.sifre.text()))
-        )
-        if imlec.fetchone():
+        if giris_dogrula(self.kullanici.text(), self.sifre.text()):
             self.ana = AnaEkran(self.kullanici.text())
             self.ana.show()
             self.close()
         else:
             QMessageBox.warning(self, "Hata", "Giriş başarısız")
 
-# ---------------- ANA SAYFA ----------------
+
+# ---------------- ANA EKRAN ----------------
 class AnaEkran(QWidget):
     def __init__(self, kullanici):
         super().__init__()
         self.kullanici = kullanici
         self.setWindowTitle("Yapılacaklar Listesi")
-        self.setGeometry(300, 300, 400, 350)
 
         self.baslik = QLabel(f"Hoş geldin: {kullanici}")
 
         self.gorev_giris = QLineEdit()
-        self.gorev_giris.setPlaceholderText("Yeni görev gir...")
+        self.gorev_giris.setPlaceholderText("Yeni görev")
 
-        self.ekle_buton = QPushButton("Görev Ekle")
-        self.ekle_buton.clicked.connect(self.gorev_ekle)
+        self.ekle = QPushButton("Görev Ekle")
+        self.ekle.clicked.connect(self.gorev_ekle)
 
-        self.sil_buton = QPushButton("Seçili Görevi Sil")
-        self.sil_buton.clicked.connect(self.gorev_sil)
+        self.sil = QPushButton("Seçili Görevi Sil")
+        self.sil.clicked.connect(self.gorev_sil)
 
         self.liste = QListWidget()
 
         layout = QVBoxLayout()
         layout.addWidget(self.baslik)
         layout.addWidget(self.gorev_giris)
-        layout.addWidget(self.ekle_buton)
+        layout.addWidget(self.ekle)
         layout.addWidget(self.liste)
-        layout.addWidget(self.sil_buton)
+        layout.addWidget(self.sil)
         self.setLayout(layout)
 
         self.gorevleri_yukle()
 
     def gorevleri_yukle(self):
         self.liste.clear()
-        imlec.execute(
-            "SELECT gorev FROM yapilacaklar WHERE kullanici_adi=?",
-            (self.kullanici,)
-        )
-        for g in imlec.fetchall():
-            self.liste.addItem(g[0])
+        try:
+            with open(GOREV_DOSYA, "r", encoding="utf-8") as f:
+                for satir in f:
+                    k, g = satir.strip().split("|")
+                    if k == self.kullanici:
+                        self.liste.addItem(g)
+        except FileNotFoundError:
+            pass
 
     def gorev_ekle(self):
         gorev = self.gorev_giris.text().strip()
         if gorev:
-            imlec.execute(
-                "INSERT INTO yapilacaklar (kullanici_adi, gorev) VALUES (?, ?)",
-                (self.kullanici, gorev)
-            )
-            baglanti.commit()
+            with open(GOREV_DOSYA, "a", encoding="utf-8") as f:
+                f.write(f"{self.kullanici}|{gorev}\n")
             self.gorev_giris.clear()
             self.gorevleri_yukle()
 
     def gorev_sil(self):
         secili = self.liste.currentItem()
-        if secili:
-            imlec.execute(
-                "DELETE FROM yapilacaklar WHERE kullanici_adi=? AND gorev=?",
-                (self.kullanici, secili.text())
-            )
-            baglanti.commit()
-            self.gorevleri_yukle()
+        if not secili:
+            return
 
-# ---------------- UYGULAMA ----------------
+        with open(GOREV_DOSYA, "r", encoding="utf-8") as f:
+            satirlar = f.readlines()
+
+        with open(GOREV_DOSYA, "w", encoding="utf-8") as f:
+            for satir in satirlar:
+                if satir.strip() != f"{self.kullanici}|{secili.text()}":
+                    f.write(satir)
+
+        self.gorevleri_yukle()
+
+
+# ---------------- ÇALIŞTIR ----------------
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    giris = Giris()
-    giris.show()
+    g = Giris()
+    g.show()
     sys.exit(app.exec())
