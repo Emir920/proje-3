@@ -46,7 +46,6 @@ class KayitOl(QWidget):
 
         self.buton = QPushButton("Kayıt Ol")
         self.buton.clicked.connect(self.kayit)
-
         layout = QVBoxLayout()
         layout.addWidget(self.kullanici)
         layout.addWidget(self.sifre)
