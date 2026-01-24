@@ -1,32 +1,74 @@
 import sys
+import sqlite3
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QListWidget, QMessageBox
 )
+from PyQt6.QtCore import Qt
 
+DB_DOSYA = "uygulama.db"
 KULLANICI_DOSYA = "kullanicilar.txt"
 GOREV_DOSYA = "gorevler.txt"
 
 
+def veritabani_baslat():
+    """Veritabanını başlatır ve tabloları oluşturur"""
+    conn = sqlite3.connect(DB_DOSYA)
+    conn.execute('PRAGMA encoding = "UTF-8"')
+    cursor = conn.cursor()
+    
+    # Kullanıcılar tablosu
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS kullanicilar (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kullanici_adi TEXT UNIQUE NOT NULL,
+            sifre TEXT NOT NULL,
+            olusturma_tarihi TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Görevler tablosu
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS gorevler (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kullanici_id INTEGER NOT NULL,
+            gorev_adi TEXT NOT NULL,
+            olusturma_tarihi TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (kullanici_id) REFERENCES kullanicilar(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+
 def kullanici_var_mi(kullanici):
+    """Kullanıcının veritabanında var olup olmadığını kontrol eder"""
     try:
-        with open(KULLANICI_DOSYA, "r", encoding="utf-8") as f:
-            for satir in f:
-                if satir.strip().split("|")[0] == kullanici:
-                    return True
-    except FileNotFoundError:
+        conn = sqlite3.connect(DB_DOSYA)
+        conn.text_factory = str
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM kullanicilar WHERE kullanici_adi = ?', (kullanici,))
+        result = cursor.fetchone()
+        conn.close()
+        return result is not None
+    except sqlite3.Error:
         pass
     return False
 
 
 def giris_dogrula(kullanici, sifre):
+    """Kullanıcı girişini doğrular"""
     try:
-        with open(KULLANICI_DOSYA, "r", encoding="utf-8") as f:
-            for satir in f:
-                k, s = satir.strip().split("|")
-                if k == kullanici and s == sifre:
-                    return True
-    except FileNotFoundError:
+        conn = sqlite3.connect(DB_DOSYA)
+        conn.text_factory = str
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM kullanicilar WHERE kullanici_adi = ? AND sifre = ?', 
+                      (kullanici, sifre))
+        result = cursor.fetchone()
+        conn.close()
+        return result is not None
+    except sqlite3.Error:
         pass
     return False
 
@@ -64,11 +106,18 @@ class KayitOl(QWidget):
             QMessageBox.warning(self, "Hata", "Kullanıcı zaten var")
             return
 
-        with open(KULLANICI_DOSYA, "a", encoding="utf-8") as f:
-            f.write(f"{k}|{s}\n")
-
-        QMessageBox.information(self, "Başarılı", "Kayıt oluşturuldu")
-        self.close()
+        try:
+            conn = sqlite3.connect(DB_DOSYA)
+            conn.text_factory = str
+            cursor = conn.cursor()
+            cursor.execute('INSERT INTO kullanicilar (kullanici_adi, sifre) VALUES (?, ?)',
+                          (k, s))
+            conn.commit()
+            conn.close()
+            QMessageBox.information(self, "Başarılı", "Kayıt oluşturuldu")
+            self.close()
+        except sqlite3.Error as e:
+            QMessageBox.warning(self, "Hata", f"Veritabanı hatası: {e}")
 
 
 # ---------------- GİRİŞ ----------------
@@ -115,6 +164,8 @@ class AnaEkran(QWidget):
     def __init__(self, kullanici):
         super().__init__()
         self.kullanici = kullanici
+        self.kullanici_id = self.kullanici_id_obt()
+        self.gorev_idsler = {}  # Görev adı -> ID eşlemesi
         self.setWindowTitle("Yapılacaklar Listesi")
 
         self.baslik = QLabel(f"Hoş geldin: {kullanici}")
@@ -140,43 +191,84 @@ class AnaEkran(QWidget):
 
         self.gorevleri_yukle()
 
-    def gorevleri_yukle(self):
-        self.liste.clear()
+    def kullanici_id_obt(self):
+        """Kullanıcının ID'sini veritabanından alır"""
         try:
-            with open(GOREV_DOSYA, "r", encoding="utf-8") as f:
-                for satir in f:
-                    k, g = satir.strip().split("|")
-                    if k == self.kullanici:
-                        self.liste.addItem(g)
-        except FileNotFoundError:
+            conn = sqlite3.connect(DB_DOSYA)
+            conn.text_factory = str
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM kullanicilar WHERE kullanici_adi = ?', (self.kullanici,))
+            result = cursor.fetchone()
+            conn.close()
+            return result[0] if result else None
+        except sqlite3.Error:
+            return None
+
+    def gorevleri_yukle(self):
+        """Kullanıcının görevlerini veritabanından yükler"""
+        self.liste.clear()
+        self.gorev_idsler = {}
+        try:
+            conn = sqlite3.connect(DB_DOSYA)
+            conn.text_factory = str
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, gorev_adi FROM gorevler WHERE kullanici_id = ? ORDER BY id DESC', 
+                          (self.kullanici_id,))
+            gorevler = cursor.fetchall()
+            conn.close()
+            
+            for gorev_id, gorev_adi in gorevler:
+                self.liste.addItem(gorev_adi)
+                self.gorev_idsler[gorev_adi] = gorev_id
+        except sqlite3.Error:
             pass
 
     def gorev_ekle(self):
+        """Yeni görev ekler"""
         gorev = self.gorev_giris.text().strip()
         if gorev:
-            with open(GOREV_DOSYA, "a", encoding="utf-8") as f:
-                f.write(f"{self.kullanici}|{gorev}\n")
-            self.gorev_giris.clear()
-            self.gorevleri_yukle()
+            try:
+                conn = sqlite3.connect(DB_DOSYA)
+                conn.text_factory = str
+                cursor = conn.cursor()
+                cursor.execute('INSERT INTO gorevler (kullanici_id, gorev_adi) VALUES (?, ?)',
+                              (self.kullanici_id, gorev))
+                conn.commit()
+                conn.close()
+                self.gorev_giris.clear()
+                self.gorevleri_yukle()
+            except sqlite3.Error as e:
+                QMessageBox.warning(self, "Hata", f"Görev eklenemedi: {e}")
 
     def gorev_sil(self):
+        """Seçili görevi siler"""
         secili = self.liste.currentItem()
         if not secili:
             return
 
-        with open(GOREV_DOSYA, "r", encoding="utf-8") as f:
-            satirlar = f.readlines()
+        gorev_adi = secili.text()
+        gorev_id = self.gorev_idsler.get(gorev_adi)
+        
+        if not gorev_id:
+            QMessageBox.warning(self, "Hata", "Görev ID'si bulunamadı")
+            return
 
-        with open(GOREV_DOSYA, "w", encoding="utf-8") as f:
-            for satir in satirlar:
-                if satir.strip() != f"{self.kullanici}|{secili.text()}":
-                    f.write(satir)
-
-        self.gorevleri_yukle()
+        try:
+            conn = sqlite3.connect(DB_DOSYA)
+            conn.text_factory = str
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM gorevler WHERE id = ? AND kullanici_id = ?',
+                          (gorev_id, self.kullanici_id))
+            conn.commit()
+            conn.close()
+            self.gorevleri_yukle()
+        except sqlite3.Error as e:
+            QMessageBox.warning(self, "Hata", f"Görev silinemedi: {e}")
 
 
 # ---------------- ÇALIŞTIR ----------------
 if __name__ == "__main__":
+    veritabani_baslat()
     app = QApplication(sys.argv)
     g = Giris()
     g.show()
