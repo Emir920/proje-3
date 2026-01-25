@@ -67,6 +67,17 @@ class KayitOl(QWidget):
             return
 
         kullanici_kaydet(self.k.text(), self.s.text())
+        import mysql.connector
+        vt = mysql.connector.connect(host="localhost",user="Emir920",password="xx4455xx6677",database="proje3")
+
+        a = self.k.text() # pyqt QLineEdit içindeki veri
+        b = self.s.text() # pyqt QLineEdit içindeki veri
+        
+        mycursor = vt.cursor()
+        mycursor.execute(f'INSERT INTO proje3.kullanicilar (ad,sifre) values ("{a}","{b}")')
+        vt.commit()
+
+
         open(gorev_dosyasi(self.k.text()), "w").close()
         QMessageBox.information(self, "OK", "Hesap oluşturuldu")
         self.hide()
