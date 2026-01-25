@@ -1,275 +1,308 @@
 import sys
-import sqlite3
+import os
+import random
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit,
-    QPushButton, QVBoxLayout, QListWidget, QMessageBox
+    QPushButton, QVBoxLayout, QListWidget,
+    QMessageBox, QProgressBar
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPainter, QColor
 
-DB_DOSYA = "uygulama.db"
-KULLANICI_DOSYA = "kullanicilar.txt"
-GOREV_DOSYA = "gorevler.txt"
+KULLANICILAR_DOSYA = "kullanicilar.txt"
 
-
-def veritabani_baslat():
-    """Veritabanını başlatır ve tabloları oluşturur"""
-    conn = sqlite3.connect(DB_DOSYA)
-    conn.execute('PRAGMA encoding = "UTF-8"')
-    cursor = conn.cursor()
-    
-    # Kullanıcılar tablosu
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS kullanicilar (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kullanici_adi TEXT UNIQUE NOT NULL,
-            sifre TEXT NOT NULL,
-            olusturma_tarihi TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Görevler tablosu
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS gorevler (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kullanici_id INTEGER NOT NULL,
-            gorev_adi TEXT NOT NULL,
-            olusturma_tarihi TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (kullanici_id) REFERENCES kullanicilar(id) ON DELETE CASCADE
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
+PENCERELER = []   # 🔥 GLOBAL – AÇILIP KAPANMAYI ENGELLER
 
 
-def kullanici_var_mi(kullanici):
-    """Kullanıcının veritabanında var olup olmadığını kontrol eder"""
-    try:
-        conn = sqlite3.connect(DB_DOSYA)
-        conn.text_factory = str
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM kullanicilar WHERE kullanici_adi = ?', (kullanici,))
-        result = cursor.fetchone()
-        conn.close()
-        return result is not None
-    except sqlite3.Error:
-        pass
-    return False
+# ---------------- DOSYA ----------------
+def kullanici_dosya_kontrol():
+    if not os.path.exists(KULLANICILAR_DOSYA):
+        open(KULLANICILAR_DOSYA, "w", encoding="utf-8").close()
 
 
-def giris_dogrula(kullanici, sifre):
-    """Kullanıcı girişini doğrular"""
-    try:
-        conn = sqlite3.connect(DB_DOSYA)
-        conn.text_factory = str
-        cursor = conn.cursor()
-        cursor.execute('SELECT id FROM kullanicilar WHERE kullanici_adi = ? AND sifre = ?', 
-                      (kullanici, sifre))
-        result = cursor.fetchone()
-        conn.close()
-        return result is not None
-    except sqlite3.Error:
-        pass
-    return False
+def kullanicilari_yukle():
+    kullanici_dosya_kontrol()
+    k = {}
+    with open(KULLANICILAR_DOSYA, "r", encoding="utf-8") as f:
+        for s in f:
+            if "|" in s:
+                a, b = s.strip().split("|", 1)
+                k[a] = b
+    return k
 
 
-# ---------------- KAYIT OL ----------------
+def kullanici_kaydet(a, b):
+    with open(KULLANICILAR_DOSYA, "a", encoding="utf-8") as f:
+        f.write(f"{a}|{b}\n")
+
+
+def gorev_dosyasi(k):
+    return f"todo_{k}.txt"
+
+
+# ---------------- KAYIT ----------------
 class KayitOl(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Kayıt Ol")
 
-        self.kullanici = QLineEdit()
-        self.kullanici.setPlaceholderText("Kullanıcı Adı")
+        self.k = QLineEdit(placeholderText="Kullanıcı Adı")
+        self.s = QLineEdit(placeholderText="Şifre")
+        self.s.setEchoMode(QLineEdit.EchoMode.Password)
 
-        self.sifre = QLineEdit()
-        self.sifre.setPlaceholderText("Şifre")
-        self.sifre.setEchoMode(QLineEdit.EchoMode.Password)
+        b = QPushButton("Hesap Oluştur")
+        b.clicked.connect(self.kaydet)
 
-        self.buton = QPushButton("Kayıt Ol")
-        self.buton.clicked.connect(self.kayit)
-        layout = QVBoxLayout()
-        layout.addWidget(self.kullanici)
-        layout.addWidget(self.sifre)
-        layout.addWidget(self.buton)
-        self.setLayout(layout)
+        l = QVBoxLayout(self)
+        l.addWidget(self.k)
+        l.addWidget(self.s)
+        l.addWidget(b)
 
-    def kayit(self):
-        k = self.kullanici.text().strip()
-        s = self.sifre.text().strip()
-
-        if not k or not s:
-            QMessageBox.warning(self, "Hata", "Boş alan bırakma")
+    def kaydet(self):
+        if not self.k.text() or not self.s.text():
+            QMessageBox.warning(self, "Hata", "Alanları doldur")
             return
 
-        if kullanici_var_mi(k):
-            QMessageBox.warning(self, "Hata", "Kullanıcı zaten var")
+        if self.k.text() in kullanicilari_yukle():
+            QMessageBox.warning(self, "Hata", "Kullanıcı var")
             return
 
-        try:
-            conn = sqlite3.connect(DB_DOSYA)
-            conn.text_factory = str
-            cursor = conn.cursor()
-            cursor.execute('INSERT INTO kullanicilar (kullanici_adi, sifre) VALUES (?, ?)',
-                          (k, s))
-            conn.commit()
-            conn.close()
-            QMessageBox.information(self, "Başarılı", "Kayıt oluşturuldu")
-            self.close()
-        except sqlite3.Error as e:
-            QMessageBox.warning(self, "Hata", f"Veritabanı hatası: {e}")
+        kullanici_kaydet(self.k.text(), self.s.text())
+        open(gorev_dosyasi(self.k.text()), "w").close()
+        QMessageBox.information(self, "OK", "Hesap oluşturuldu")
+        self.hide()
 
 
 # ---------------- GİRİŞ ----------------
 class Giris(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Giriş Yap")
+        self.setWindowTitle("Giriş")
 
-        self.kullanici = QLineEdit()
-        self.kullanici.setPlaceholderText("Kullanıcı Adı")
+        self.k = QLineEdit(placeholderText="Kullanıcı")
+        self.s = QLineEdit(placeholderText="Şifre")
+        self.s.setEchoMode(QLineEdit.EchoMode.Password)
 
-        self.sifre = QLineEdit()
-        self.sifre.setPlaceholderText("Şifre")
-        self.sifre.setEchoMode(QLineEdit.EchoMode.Password)
+        g = QPushButton("Giriş")
+        g.clicked.connect(self.giris)
 
-        self.giris_buton = QPushButton("Giriş Yap")
-        self.giris_buton.clicked.connect(self.giris)
+        r = QPushButton("Kayıt Ol")
+        r.clicked.connect(self.kayit)
 
-        self.kayit_buton = QPushButton("Kayıt Ol")
-        self.kayit_buton.clicked.connect(self.kayit_ac)
+        l = QVBoxLayout(self)
+        l.addWidget(self.k)
+        l.addWidget(self.s)
+        l.addWidget(g)
+        l.addWidget(r)
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.kullanici)
-        layout.addWidget(self.sifre)
-        layout.addWidget(self.giris_buton)
-        layout.addWidget(self.kayit_buton)
-        self.setLayout(layout)
-
-    def kayit_ac(self):
-        self.kayit = KayitOl()
-        self.kayit.show()
+    def kayit(self):
+        self.kayit_p = KayitOl()
+        PENCERELER.append(self.kayit_p)
+        self.kayit_p.show()
 
     def giris(self):
-        if giris_dogrula(self.kullanici.text(), self.sifre.text()):
-            self.ana = AnaEkran(self.kullanici.text())
-            self.ana.show()
-            self.close()
+        if kullanicilari_yukle().get(self.k.text()) == self.s.text():
+            self.menu = Menu(self.k.text())
+            PENCERELER.append(self.menu)
+            self.menu.show()
+            self.hide()
         else:
-            QMessageBox.warning(self, "Hata", "Giriş başarısız")
+            QMessageBox.warning(self, "Hata", "Yanlış giriş")
 
 
-# ---------------- ANA EKRAN ------------------
-class AnaEkran(QWidget):
-    def __init__(self, kullanici):
+# ---------------- MENÜ ----------------
+class Menu(QWidget):
+    def __init__(self, user):
         super().__init__()
-        self.kullanici = kullanici
-        self.kullanici_id = self.kullanici_id_obt()
-        self.gorev_idsler = {}  # Görev adı -> ID eşlemesi
-        self.setWindowTitle("Yapılacaklar Listesi")
+        self.user = user
+        self.setWindowTitle("Menü")
 
-        self.baslik = QLabel(f"Hoş geldin: {kullanici}")
+        l = QVBoxLayout(self)
+        l.addWidget(QLabel(f"Hoş geldin {user}"))
 
-        self.gorev_giris = QLineEdit()
-        self.gorev_giris.setPlaceholderText("Yeni görev")
+        t = QPushButton("📝 Yapılacaklar")
+        o = QPushButton("🎮 Oyunlar")
 
-        self.ekle = QPushButton("Görev Ekle")
-        self.ekle.clicked.connect(self.gorev_ekle)
+        t.clicked.connect(self.todo)
+        o.clicked.connect(self.oyunlar)
 
-        self.sil = QPushButton("Seçili Görevi Sil")
-        self.sil.clicked.connect(self.gorev_sil)
+        l.addWidget(t)
+        l.addWidget(o)
 
-        self.liste = QListWidget()
+    def todo(self):
+        self.t = Yapilacaklar(self.user)
+        PENCERELER.append(self.t)
+        self.t.show()
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.baslik)
-        layout.addWidget(self.gorev_giris)
-        layout.addWidget(self.ekle)
-        layout.addWidget(self.liste)
-        layout.addWidget(self.sil)
-        self.setLayout(layout)
+    def oyunlar(self):
+        self.o = OyunListesi()
+        PENCERELER.append(self.o)
+        self.o.show()
 
-        self.gorevleri_yukle()
 
-    def kullanici_id_obt(self):
-        """Kullanıcının ID'sini veritabanından alır"""
-        try:
-            conn = sqlite3.connect(DB_DOSYA)
-            conn.text_factory = str
-            cursor = conn.cursor()
-            cursor.execute('SELECT id FROM kullanicilar WHERE kullanici_adi = ?', (self.kullanici,))
-            result = cursor.fetchone()
-            conn.close()
-            return result[0] if result else None
-        except sqlite3.Error:
-            return None
+# ---------------- TODO ----------------
+class Yapilacaklar(QWidget):
+    def __init__(self, k):
+        super().__init__()
+        self.d = gorev_dosyasi(k)
+        self.setWindowTitle("Yapılacaklar")
 
-    def gorevleri_yukle(self):
-        """Kullanıcının görevlerini veritabanından yükler"""
-        self.liste.clear()
-        self.gorev_idsler = {}
-        try:
-            conn = sqlite3.connect(DB_DOSYA)
-            conn.text_factory = str
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, gorev_adi FROM gorevler WHERE kullanici_id = ? ORDER BY id DESC', 
-                          (self.kullanici_id,))
-            gorevler = cursor.fetchall()
-            conn.close()
-            
-            for gorev_id, gorev_adi in gorevler:
-                self.liste.addItem(gorev_adi)
-                self.gorev_idsler[gorev_adi] = gorev_id
-        except sqlite3.Error:
-            pass
+        self.g = QLineEdit()
+        e = QPushButton("Ekle")
+        e.clicked.connect(self.ekle)
 
-    def gorev_ekle(self):
-        """Yeni görev ekler"""
-        gorev = self.gorev_giris.text().strip()
-        if gorev:
-            try:
-                conn = sqlite3.connect(DB_DOSYA)
-                conn.text_factory = str
-                cursor = conn.cursor()
-                cursor.execute('INSERT INTO gorevler (kullanici_id, gorev_adi) VALUES (?, ?)',
-                              (self.kullanici_id, gorev))
-                conn.commit()
-                conn.close()
-                self.gorev_giris.clear()
-                self.gorevleri_yukle()
-            except sqlite3.Error as e:
-                QMessageBox.warning(self, "Hata", f"Görev eklenemedi: {e}")
+        self.l = QListWidget()
+        s = QPushButton("Sil")
+        s.clicked.connect(self.sil)
 
-    def gorev_sil(self):
-        """Seçili görevi siler"""
-        secili = self.liste.currentItem()
-        if not secili:
+        v = QVBoxLayout(self)
+        for w in (self.g, e, self.l, s):
+            v.addWidget(w)
+
+        self.yukle()
+
+    def yukle(self):
+        self.l.clear()
+        if os.path.exists(self.d):
+            with open(self.d) as f:
+                for x in f:
+                    self.l.addItem(x.strip())
+
+    def ekle(self):
+        with open(self.d, "a") as f:
+            f.write(self.g.text() + "\n")
+        self.g.clear()
+        self.yukle()
+
+    def sil(self):
+        if not self.l.currentItem():
+            return
+        with open(self.d) as f:
+            x = [i.strip() for i in f if i.strip() != self.l.currentItem().text()]
+        with open(self.d, "w") as f:
+            for i in x:
+                f.write(i + "\n")
+        self.yukle()
+
+
+# ---------------- OYUN LİSTESİ ----------------
+class OyunListesi(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Oyunlar")
+
+        self.l = QListWidget()
+        self.l.addItem("🐍 Yılan Oyunu")
+        self.l.addItem("🔥 Canavar Savaşı")
+
+        b = QPushButton("Aç")
+        b.clicked.connect(self.baslat)
+
+        v = QVBoxLayout(self)
+        v.addWidget(self.l)
+        v.addWidget(b)
+
+    def baslat(self):
+        if not self.l.currentItem():
             return
 
-        gorev_adi = secili.text()
-        gorev_id = self.gorev_idsler.get(gorev_adi)
-        
-        if not gorev_id:
-            QMessageBox.warning(self, "Hata", "Görev ID'si bulunamadı")
+        if "Yılan" in self.l.currentItem().text():
+            self.o = YilanOyunu()
+        else:
+            self.o = PokemonBenzeri()
+
+        PENCERELER.append(self.o)
+        self.o.show()
+
+
+# ---------------- YILAN ----------------
+class YilanOyunu(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setFixedSize(400, 400)
+        self.y = [(200, 200)]
+        self.yon = Qt.Key.Key_Right
+        self.yem = (100, 100)
+
+        self.t = QTimer()
+        self.t.timeout.connect(self.guncelle)
+        self.t.start(120)
+
+    def keyPressEvent(self, e):
+        self.yon = e.key()
+
+    def guncelle(self):
+        x, y = self.y[0]
+        if self.yon == Qt.Key.Key_Left: x -= 20
+        if self.yon == Qt.Key.Key_Right: x += 20
+        if self.yon == Qt.Key.Key_Up: y -= 20
+        if self.yon == Qt.Key.Key_Down: y += 20
+        n = (x, y)
+
+        if n in self.y or not (0 <= x < 400 and 0 <= y < 400):
+            self.t.stop()
+            QMessageBox.information(self, "Bitti", "Kaybettin")
+            self.hide()
             return
 
-        try:
-            conn = sqlite3.connect(DB_DOSYA)
-            conn.text_factory = str
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM gorevler WHERE id = ? AND kullanici_id = ?',
-                          (gorev_id, self.kullanici_id))
-            conn.commit()
-            conn.close()
-            self.gorevleri_yukle()
-        except sqlite3.Error as e:
-            QMessageBox.warning(self, "Hata", f"Görev silinemedi: {e}")
+        self.y.insert(0, n)
+        if n == self.yem:
+            self.yem = (random.randrange(0, 400, 20), random.randrange(0, 400, 20))
+        else:
+            self.y.pop()
+        self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setBrush(QColor("green"))
+        for a, b in self.y:
+            p.drawRect(a, b, 20, 20)
+        p.setBrush(QColor("red"))
+        p.drawRect(*self.yem, 20, 20)
 
 
-# ---------------- ÇALIŞTIR ----------------
+# ---------------- POKEMON ----------------
+class PokemonBenzeri(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Canavar")
+
+        self.o = 100
+        self.d = 100
+
+        self.ob = QProgressBar()
+        self.db = QProgressBar()
+        self.ob.setValue(100)
+        self.db.setValue(100)
+
+        b = QPushButton("Saldır")
+        b.clicked.connect(self.saldir)
+
+        v = QVBoxLayout(self)
+        for w in ("Sen", self.ob, "Düşman", self.db, b):
+            v.addWidget(QLabel(w) if isinstance(w, str) else w)
+
+    def saldir(self):
+        self.d -= random.randint(10, 20)
+        self.db.setValue(self.d)
+        if self.d <= 0:
+            QMessageBox.information(self, "Kazandın", "Tebrikler")
+            self.hide()
+            return
+
+        self.o -= random.randint(5, 15)
+        self.ob.setValue(self.o)
+        if self.o <= 0:
+            QMessageBox.information(self, "Kaybettin", "Üzgünüm")
+            self.hide()
+
+
+# ---------------- BAŞLAT ----------------
 if __name__ == "__main__":
-    veritabani_baslat()
     app = QApplication(sys.argv)
+
     g = Giris()
+    PENCERELER.append(g)
     g.show()
+
     sys.exit(app.exec())
