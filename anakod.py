@@ -10,8 +10,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter, QColor
 
 KULLANICILAR_DOSYA = "kullanicilar.txt"
-
-PENCERELER = []   # 🔥 GLOBAL – AÇILIP KAPANMAYI ENGELLER
+PENCERELER = []
 
 
 # ---------------- DOSYA ----------------
@@ -169,6 +168,8 @@ class Yapilacaklar(QWidget):
                     self.l.addItem(x.strip())
 
     def ekle(self):
+        if not self.g.text():
+            return
         with open(self.d, "a") as f:
             f.write(self.g.text() + "\n")
         self.g.clear()
@@ -215,50 +216,79 @@ class OyunListesi(QWidget):
         self.o.show()
 
 
-# ---------------- YILAN ----------------
+# ---------------- YILAN (DÜZELTİLDİ) ----------------
 class YilanOyunu(QWidget):
     def __init__(self):
         super().__init__()
+        self.setWindowTitle("Yılan Oyunu")
         self.setFixedSize(400, 400)
-        self.y = [(200, 200)]
-        self.yon = Qt.Key.Key_Right
-        self.yem = (100, 100)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        self.t = QTimer()
-        self.t.timeout.connect(self.guncelle)
-        self.t.start(120)
+        self.yilan = [(200, 200), (180, 200), (160, 200)]
+        self.yon = Qt.Key.Key_Right
+        self.yem = self.yeni_yem()
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.guncelle)
+        self.timer.start(120)
+
+    def yeni_yem(self):
+        while True:
+            y = (random.randrange(0, 400, 20), random.randrange(0, 400, 20))
+            if y not in self.yilan:
+                return y
 
     def keyPressEvent(self, e):
-        self.yon = e.key()
+        ters = {
+            Qt.Key.Key_Left: Qt.Key.Key_Right,
+            Qt.Key.Key_Right: Qt.Key.Key_Left,
+            Qt.Key.Key_Up: Qt.Key.Key_Down,
+            Qt.Key.Key_Down: Qt.Key.Key_Up
+        }
+
+        if e.key() in ters and ters[e.key()] != self.yon:
+            self.yon = e.key()
 
     def guncelle(self):
-        x, y = self.y[0]
-        if self.yon == Qt.Key.Key_Left: x -= 20
-        if self.yon == Qt.Key.Key_Right: x += 20
-        if self.yon == Qt.Key.Key_Up: y -= 20
-        if self.yon == Qt.Key.Key_Down: y += 20
-        n = (x, y)
+        x, y = self.yilan[0]
 
-        if n in self.y or not (0 <= x < 400 and 0 <= y < 400):
-            self.t.stop()
-            QMessageBox.information(self, "Bitti", "Kaybettin")
-            self.hide()
+        if self.yon == Qt.Key.Key_Left:
+            x -= 20
+        elif self.yon == Qt.Key.Key_Right:
+            x += 20
+        elif self.yon == Qt.Key.Key_Up:
+            y -= 20
+        elif self.yon == Qt.Key.Key_Down:
+            y += 20
+
+        yeni = (x, y)
+
+        if (
+            yeni in self.yilan or
+            x < 0 or x >= 400 or y < 0 or y >= 400
+        ):
+            self.timer.stop()
+            QMessageBox.information(self, "Oyun Bitti", "Kaybettin")
+            self.close()
             return
 
-        self.y.insert(0, n)
-        if n == self.yem:
-            self.yem = (random.randrange(0, 400, 20), random.randrange(0, 400, 20))
+        self.yilan.insert(0, yeni)
+
+        if yeni == self.yem:
+            self.yem = self.yeni_yem()
         else:
-            self.y.pop()
+            self.yilan.pop()
+
         self.update()
 
     def paintEvent(self, e):
         p = QPainter(self)
         p.setBrush(QColor("green"))
-        for a, b in self.y:
-            p.drawRect(a, b, 20, 20)
+        for x, y in self.yilan:
+            p.drawRect(x, y, 20, 20)
+
         p.setBrush(QColor("red"))
-        p.drawRect(*self.yem, 20, 20)
+        p.drawRect(self.yem[0], self.yem[1], 20, 20)
 
 
 # ---------------- POKEMON ----------------
@@ -287,22 +317,20 @@ class PokemonBenzeri(QWidget):
         self.db.setValue(self.d)
         if self.d <= 0:
             QMessageBox.information(self, "Kazandın", "Tebrikler")
-            self.hide()
+            self.close()
             return
 
         self.o -= random.randint(5, 15)
         self.ob.setValue(self.o)
         if self.o <= 0:
             QMessageBox.information(self, "Kaybettin", "Üzgünüm")
-            self.hide()
+            self.close()
 
 
 # ---------------- BAŞLAT ----------------
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-
     g = Giris()
     PENCERELER.append(g)
     g.show()
-
     sys.exit(app.exec())
