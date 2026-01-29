@@ -345,3 +345,4 @@ if __name__ == "__main__":
     PENCERELER.append(g)
     g.show()
     sys.exit(app.exec())
+#----------------SON----------------------
