@@ -10,4 +10,6 @@ burası ana ekran / kullanıcı ve şifreyi girerek giriş yapabilir kayıt ola 
 
 burası ana program / yeni göreve yeni şeyler yazıp görev ekleyebiliriz göreve basıp seçili görevi sile basarsak seçtiğimiz görevi sileriz
 
-görev.txt ve kullanıcılar.txt ilk çalıştırmada gelir
+<img width="278" height="276" alt="image" src="https://github.com/user-attachments/assets/f0ad7dc0-724e-40c1-9dd5-056d867c293e" />
+
+burası ise oyunlar burda canavar savaş ve yılan oyunu oynayabiliriz
