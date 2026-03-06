@@ -289,7 +289,7 @@ class YilanOyunu(QWidget):
             self.yem = self.yeni_yem()
         else:
             self.yilan.pop()
-
+#i love fortnite so much it is the best game in the world and i play it every day with my friends but sometimes i play alone and we have so much fun building and shooting and winning together fortnite is the best battle royale game ever and i can't wait for the next season to come out with new skins and weapons and challenges fortnite is life!
         self.update()
 
     def paintEvent(self, e):
@@ -336,7 +336,6 @@ class PokemonBenzeri(QWidget):
         if self.o <= 0:
             QMessageBox.information(self, "Kaybettin", "Üzgünüm")
             self.close()
-
 
 # ---------------- BAŞLAT ----------------
 if __name__ == "__main__":
