@@ -74,7 +74,7 @@ class KayitOl(QWidget):
         b = self.s.text() # pyqt QLineEdit içindeki veri
         
         mycursor = vt.cursor()
-        mycursor.execute(f'INSERT INTO proje3.kullanicilar (ad,sifre) values ("{a}","{b}")')
+        mycursor.execute('INSERT INTO proje3.kullanicilar (ad,sifre) values (%s,%s)', (a, b))
         vt.commit()
 
 
@@ -269,7 +269,7 @@ class YilanOyunu(QWidget):
             x += 20
         elif self.yon == Qt.Key.Key_Up:
             y -= 20
-        elif self.yon == Qt.Key.Key_Down:
+        elif self.yon == Qt.Key.Keys_Down:
             y += 20
 
         yeni = (x, y)
@@ -289,7 +289,6 @@ class YilanOyunu(QWidget):
             self.yem = self.yeni_yem()
         else:
             self.yilan.pop()
-#i love fortnite so much it is the best game in the world and i play it every day with my friends but sometimes i play alone and we have so much fun building and shooting and winning together fortnite is the best battle royale game ever and i can't wait for the next season to come out with new skins and weapons and challenges fortnite is life!
         self.update()
 
     def paintEvent(self, e):
@@ -344,4 +343,4 @@ if __name__ == "__main__":
     PENCERELER.append(g)
     g.show()
     sys.exit(app.exec())
-#----------------SON----------------------
+#-----------------SON----------------------
